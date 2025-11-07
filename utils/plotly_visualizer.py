@@ -990,5 +990,560 @@ def example_usage():
     print("# fig.write_html('visualization.html')  # Save to file")
 
 
+def save_figure_for_a4_print(fig: go.Figure, output_path: str,
+                            orientation: str = "portrait",
+                            title: str = "Knowledge Graph Visualization",
+                            description: str = "") -> str:
+    """
+    Save Plotly figure optimized for A4 printing.
+
+    Args:
+        fig: Plotly figure object
+        output_path: Path to save the HTML file
+        orientation: 'portrait' (纵向) or 'landscape' (横向)
+        title: Page title
+        description: Optional description text to include
+
+    Returns:
+        Path to the saved HTML file
+
+    A4 sizes:
+        Portrait: 210mm x 297mm (usable: ~700px x 1030px at 96 DPI)
+        Landscape: 297mm x 210mm (usable: ~1030px x 700px at 96 DPI)
+    """
+    import os
+    from pathlib import Path
+
+    # Calculate optimal figure size for A4
+    if orientation.lower() == "portrait":
+        # A4 纵向 - 考虑页边距后的可用空间
+        width = 700   # 约 185mm
+        height = 850  # 约 225mm (留出标题和页脚空间)
+        page_class = "page"
+    else:  # landscape
+        # A4 横向
+        width = 1000  # 约 265mm
+        height = 600  # 约 159mm
+        page_class = "page landscape"
+
+    # Update figure layout for print
+    fig.update_layout(
+        width=width,
+        height=height,
+        margin=dict(l=50, r=50, t=100, b=50),  # 适当的边距
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        font=dict(size=10)  # 打印友好的字体大小
+    )
+
+    # Get figure HTML
+    fig_html = fig.to_html(
+        include_plotlyjs='cdn',
+        div_id='main-chart',
+        config={
+            'displayModeBar': False,  # 打印时隐藏工具栏
+            'staticPlot': False,       # 保持交互性（屏幕查看时）
+            'responsive': True
+        }
+    )
+
+    # Extract just the div part
+    import re
+    div_match = re.search(r'(<div id="main-chart".*?</script>)', fig_html, re.DOTALL)
+    if div_match:
+        chart_div = div_match.group(1)
+    else:
+        chart_div = fig_html
+
+    # Build page content
+    description_html = ""
+    if description:
+        description_html = f'<div class="chart-description">{description}</div>'
+
+    page_content = f'''
+    <div class="{page_class}">
+        <div class="page-header">
+            <h1>{title}</h1>
+            <div class="subtitle">Knowledge Graph Traversal Visualization</div>
+        </div>
+
+        {description_html}
+
+        <div class="chart-container">
+            {chart_div}
+        </div>
+
+        <div class="page-footer">
+            Page 1 | Generated with Plotly
+        </div>
+    </div>
+    '''
+
+    # Load template
+    template_path = Path(__file__).parent / "plotly_a4_print_template.html"
+    if template_path.exists():
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template = f.read()
+    else:
+        # Fallback template if file doesn't exist
+        template = get_default_a4_template()
+
+    # Replace placeholders
+    html_content = template.replace('{{title}}', title)
+    html_content = html_content.replace('{{content}}', page_content)
+
+    # Save to file
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
+    print(f"✅ A4 print-optimized HTML saved to: {output_path}")
+    print(f"   Orientation: {orientation}")
+    print(f"   Figure size: {width}x{height}px")
+    print(f"   Open in browser and use Print (Ctrl+P) to save as PDF")
+
+    return str(output_path)
+
+
+def save_multiple_figures_for_a4_print(figures: List[Tuple[go.Figure, str, str]],
+                                       output_path: str,
+                                       orientation: str = "portrait",
+                                       main_title: str = "Knowledge Graph Analysis Report") -> str:
+    """
+    Save multiple Plotly figures as a multi-page A4 document.
+
+    Args:
+        figures: List of (figure, title, description) tuples
+        output_path: Path to save the HTML file
+        orientation: 'portrait' or 'landscape'
+        main_title: Overall document title
+
+    Returns:
+        Path to the saved HTML file
+    """
+    from pathlib import Path
+
+    # Calculate optimal figure size
+    if orientation.lower() == "portrait":
+        width, height = 700, 850
+        page_class = "page"
+    else:
+        width, height = 1000, 600
+        page_class = "page landscape"
+
+    pages_html = []
+
+    for idx, (fig, title, description) in enumerate(figures, 1):
+        # Update figure layout
+        fig.update_layout(
+            width=width,
+            height=height,
+            margin=dict(l=50, r=50, t=100, b=50),
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            font=dict(size=10)
+        )
+
+        # Get figure HTML
+        fig_html = fig.to_html(
+            include_plotlyjs='cdn' if idx == 1 else False,  # Only include Plotly.js once
+            div_id=f'chart-{idx}',
+            config={'displayModeBar': False, 'staticPlot': False, 'responsive': True}
+        )
+
+        # Extract div
+        import re
+        div_match = re.search(rf'(<div id="chart-{idx}".*?</script>)', fig_html, re.DOTALL)
+        chart_div = div_match.group(1) if div_match else fig_html
+
+        # Build description
+        desc_html = f'<div class="chart-description">{description}</div>' if description else ''
+
+        # Build page
+        page_html = f'''
+    <div class="{page_class}">
+        <div class="page-header">
+            <h1>{title}</h1>
+            <div class="subtitle">{main_title}</div>
+        </div>
+
+        {desc_html}
+
+        <div class="chart-container">
+            {chart_div}
+        </div>
+
+        <div class="page-footer">
+            Page {idx} of {len(figures)} | Generated with Plotly
+        </div>
+    </div>
+        '''
+        pages_html.append(page_html)
+
+    # Load template
+    template_path = Path(__file__).parent / "plotly_a4_print_template.html"
+    if template_path.exists():
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template = f.read()
+    else:
+        template = get_default_a4_template()
+
+    # Combine all pages
+    all_pages = '\n'.join(pages_html)
+    html_content = template.replace('{{title}}', main_title)
+    html_content = html_content.replace('{{content}}', all_pages)
+
+    # Save
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
+    print(f"✅ Multi-page A4 print-optimized HTML saved to: {output_path}")
+    print(f"   Pages: {len(figures)}")
+    print(f"   Orientation: {orientation}")
+
+    return str(output_path)
+
+
+def figure_to_base64(fig: go.Figure, width: int = 1200, height: int = 800,
+                     scale: int = 2, format: str = 'png') -> str:
+    """
+    Convert Plotly figure to base64 encoded image.
+
+    Args:
+        fig: Plotly figure object
+        width: Image width in pixels
+        height: Image height in pixels
+        scale: Scale factor for higher resolution (default 2 for retina displays)
+        format: Image format ('png', 'jpeg', 'webp', 'svg')
+
+    Returns:
+        Base64 encoded string of the image
+
+    Note:
+        Requires kaleido: pip install kaleido
+    """
+    import base64
+    from io import BytesIO
+
+    try:
+        # Try using kaleido (recommended)
+        img_bytes = fig.to_image(
+            format=format,
+            width=width,
+            height=height,
+            scale=scale
+        )
+    except Exception as e:
+        print(f"⚠️ Warning: kaleido not available ({e})")
+        print("   Installing kaleido: pip install kaleido")
+        print("   Falling back to plotly.io.to_image")
+
+        try:
+            import plotly.io as pio
+            img_bytes = pio.to_image(
+                fig,
+                format=format,
+                width=width,
+                height=height,
+                scale=scale
+            )
+        except Exception as e2:
+            raise RuntimeError(
+                f"Failed to convert figure to image. "
+                f"Please install kaleido: pip install kaleido\n"
+                f"Error: {e2}"
+            )
+
+    # Convert to base64
+    base64_str = base64.b64encode(img_bytes).decode('utf-8')
+    return base64_str
+
+
+def save_figure_for_a4_print_static(fig: go.Figure, output_path: str,
+                                   orientation: str = "portrait",
+                                   title: str = "Knowledge Graph Visualization",
+                                   description: str = "",
+                                   image_quality: int = 2) -> str:
+    """
+    Save Plotly figure as static image (base64) optimized for A4 printing using Jinja2.
+
+    This version converts Plotly charts to static PNG images embedded as base64,
+    resulting in faster loading and more stable printing.
+
+    Args:
+        fig: Plotly figure object
+        output_path: Path to save the HTML file
+        orientation: 'portrait' (纵向) or 'landscape' (横向)
+        title: Page title
+        description: Optional description text
+        image_quality: Scale factor for image resolution (1-4, higher = better quality)
+
+    Returns:
+        Path to the saved HTML file
+
+    Requires:
+        - jinja2: pip install jinja2
+        - kaleido: pip install kaleido
+    """
+    from pathlib import Path
+
+    try:
+        from jinja2 import Template
+    except ImportError:
+        raise ImportError("Jinja2 not installed. Run: pip install jinja2")
+
+    # Calculate optimal image size for A4
+    if orientation.lower() == "portrait":
+        # A4 纵向
+        width = 700
+        height = 850
+    else:  # landscape
+        # A4 横向
+        width = 1000
+        height = 600
+
+    # Update figure layout for print
+    fig.update_layout(
+        width=width,
+        height=height,
+        margin=dict(l=50, r=50, t=80, b=50),
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        font=dict(size=11)
+    )
+
+    # Convert figure to base64
+    print(f"📸 Converting figure to static image ({width}x{height}px, scale={image_quality})...")
+    image_base64 = figure_to_base64(fig, width=width, height=height, scale=image_quality)
+    print(f"   ✅ Image size: {len(image_base64) / 1024:.1f} KB")
+
+    # Load Jinja2 template
+    template_path = Path(__file__).parent / "plotly_a4_jinja2_template.html"
+    if template_path.exists():
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template_content = f.read()
+    else:
+        # Fallback inline template
+        template_content = get_jinja2_inline_template()
+
+    template = Template(template_content)
+
+    # Prepare data for template
+    pages = [{
+        'title': title,
+        'subtitle': 'Knowledge Graph Traversal Visualization',
+        'description': description,
+        'image_base64': image_base64
+    }]
+
+    # Render HTML
+    html_content = template.render(
+        title=title,
+        orientation=orientation,
+        pages=pages
+    )
+
+    # Save to file
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
+    print(f"✅ A4 static image HTML saved to: {output_path}")
+    print(f"   Orientation: {orientation}")
+    print(f"   Image size: {width}x{height}px (scale {image_quality}x)")
+    print(f"   File is self-contained with embedded base64 image")
+    print(f"   Open in browser and use Print (Ctrl+P) to save as PDF")
+
+    return str(output_path)
+
+
+def save_multiple_figures_for_a4_print_static(
+    figures: List[Tuple[go.Figure, str, str]],
+    output_path: str,
+    orientation: str = "portrait",
+    main_title: str = "Knowledge Graph Analysis Report",
+    image_quality: int = 2
+) -> str:
+    """
+    Save multiple Plotly figures as static images in a multi-page A4 document using Jinja2.
+
+    Args:
+        figures: List of (figure, title, description) tuples
+        output_path: Path to save the HTML file
+        orientation: 'portrait' or 'landscape'
+        main_title: Overall document title
+        image_quality: Scale factor for image resolution (1-4)
+
+    Returns:
+        Path to the saved HTML file
+
+    Requires:
+        - jinja2: pip install jinja2
+        - kaleido: pip install kaleido
+    """
+    from pathlib import Path
+
+    try:
+        from jinja2 import Template
+    except ImportError:
+        raise ImportError("Jinja2 not installed. Run: pip install jinja2")
+
+    # Calculate optimal image size
+    if orientation.lower() == "portrait":
+        width, height = 700, 850
+    else:
+        width, height = 1000, 600
+
+    pages = []
+
+    for idx, (fig, title, description) in enumerate(figures, 1):
+        print(f"📸 Processing figure {idx}/{len(figures)}: {title}")
+
+        # Update figure layout
+        fig.update_layout(
+            width=width,
+            height=height,
+            margin=dict(l=50, r=50, t=80, b=50),
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            font=dict(size=11)
+        )
+
+        # Convert to base64
+        image_base64 = figure_to_base64(fig, width=width, height=height, scale=image_quality)
+        print(f"   ✅ Image {idx} size: {len(image_base64) / 1024:.1f} KB")
+
+        pages.append({
+            'title': title,
+            'subtitle': main_title,
+            'description': description,
+            'image_base64': image_base64
+        })
+
+    # Load template
+    template_path = Path(__file__).parent / "plotly_a4_jinja2_template.html"
+    if template_path.exists():
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template_content = f.read()
+    else:
+        template_content = get_jinja2_inline_template()
+
+    template = Template(template_content)
+
+    # Render HTML
+    html_content = template.render(
+        title=main_title,
+        orientation=orientation,
+        pages=pages
+    )
+
+    # Save
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
+    total_size = sum(len(p['image_base64']) for p in pages) / 1024
+    print(f"\n✅ Multi-page static HTML saved to: {output_path}")
+    print(f"   Pages: {len(figures)}")
+    print(f"   Orientation: {orientation}")
+    print(f"   Total embedded image size: {total_size:.1f} KB")
+    print(f"   File is self-contained and ready for printing")
+
+    return str(output_path)
+
+
+def get_jinja2_inline_template() -> str:
+    """Inline Jinja2 template as fallback"""
+    return """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, "Microsoft YaHei", sans-serif; background: #f5f5f5; padding: 20px; }
+        .page { background: white; margin: 0 auto 20px; padding: 20mm; box-shadow: 0 0 10px rgba(0,0,0,0.1); position: relative; }
+        .page.portrait { width: 210mm; min-height: 297mm; }
+        .page.landscape { width: 297mm; min-height: 210mm; }
+        .page-header { text-align: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
+        .page-header h1 { font-size: 24px; margin-bottom: 5px; }
+        .page-header .subtitle { font-size: 14px; color: #666; }
+        .page-footer { position: absolute; bottom: 15mm; left: 20mm; right: 20mm; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 5px; }
+        .chart-container { width: 100%; text-align: center; margin: 10px 0; page-break-inside: avoid; }
+        .chart-container img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+        .chart-description { margin: 10px 0; padding: 10px; background: #f9f9f9; border-left: 4px solid #4CAF50; font-size: 14px; }
+        .print-button { position: fixed; top: 20px; right: 20px; padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 1000; }
+        .print-button:hover { background: #45a049; }
+        @media print {
+            body { background: white; padding: 0; }
+            .page { margin: 0; padding: 20mm; box-shadow: none; page-break-after: always; }
+            .page.portrait { width: 210mm; height: 297mm; }
+            .page.landscape { width: 297mm; height: 210mm; }
+            .page:last-child { page-break-after: auto; }
+            .chart-container { page-break-inside: avoid; }
+            .print-button { display: none !important; }
+        }
+        @page { size: A4 {{ 'landscape' if orientation == 'landscape' else 'portrait' }}; margin: 0; }
+    </style>
+</head>
+<body>
+    <button class="print-button" onclick="window.print()">🖨️ 打印 / 保存为PDF</button>
+    {% for page in pages %}
+    <div class="page {{ orientation }}">
+        <div class="page-header">
+            <h1>{{ page.title }}</h1>
+            {% if page.subtitle %}<div class="subtitle">{{ page.subtitle }}</div>{% endif %}
+        </div>
+        {% if page.description %}<div class="chart-description">{{ page.description }}</div>{% endif %}
+        <div class="chart-container">
+            <img src="data:image/png;base64,{{ page.image_base64 }}" alt="{{ page.title }}">
+        </div>
+        <div class="page-footer">Page {{ loop.index }}{% if pages|length > 1 %} of {{ pages|length }}{% endif %} | Generated with Plotly</div>
+    </div>
+    {% endfor %}
+</body>
+</html>"""
+
+
+def get_default_a4_template() -> str:
+    """Fallback template if template file is not found"""
+    return """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>{{title}}</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+.page { background: white; margin: 0 auto 20px; padding: 20mm; width: 210mm; min-height: 297mm; box-shadow: 0 0 10px rgba(0,0,0,0.1); position: relative; }
+.page.landscape { width: 297mm; min-height: 210mm; }
+.page-header { text-align: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
+.page-header h1 { font-size: 24px; margin-bottom: 5px; }
+.page-footer { position: absolute; bottom: 15mm; left: 20mm; right: 20mm; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 5px; }
+.chart-container { width: 100%; margin: 10px 0; }
+.chart-description { margin: 10px 0; padding: 10px; background: #f9f9f9; border-left: 4px solid #4CAF50; }
+.print-button { position: fixed; top: 20px; right: 20px; padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 1000; }
+@media print {
+    body { background: white; padding: 0; }
+    .page { margin: 0; padding: 20mm; box-shadow: none; page-break-after: always; width: 210mm; height: 297mm; }
+    .page.landscape { width: 297mm; height: 210mm; }
+    .page:last-child { page-break-after: auto; }
+    .chart-container { page-break-inside: avoid; }
+    .print-button, .no-print { display: none !important; }
+}
+@page { size: A4 portrait; margin: 0; }
+</style></head><body>
+<button class="print-button" onclick="window.print()">🖨️ 打印 / 保存为PDF</button>
+{{content}}
+</body></html>"""
+
+
 if __name__ == "__main__":
     example_usage()
